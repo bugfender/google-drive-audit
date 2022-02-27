@@ -94,6 +94,7 @@ func tokenSourceForSubject(ctx context.Context, serviceAccountFilePath string, s
 func (d *Client) GetAllFilesWithPermissions(ctx context.Context, status chan<- int) (map[string]File, error) {
 	defer close(status)
 	allFiles := make(map[string]File)
+	noPermissionFiles := make(map[string]File)
 	// all users
 	for _, userEmail := range d.userEmails {
 		srv, err := d.getDriveClientForUser(ctx, userEmail)
@@ -168,7 +169,10 @@ func (d *Client) GetAllFilesWithPermissions(ctx context.Context, status chan<- i
 					permissions[owner.EmailAddress] = "owner"
 				}
 				if len(permissions) == 0 {
-					return nil, fmt.Errorf("did not get any file permissions: %s - %s", file.Id, file.Name)
+					noPermissionFiles[file.Id] = File{
+						ID:   file.Id,
+						Name: file.Name,
+					}
 				}
 				// a file can have multiple parents (deprecated). We'll only choose one
 				var parent string
@@ -195,6 +199,15 @@ func (d *Client) GetAllFilesWithPermissions(ctx context.Context, status chan<- i
 			nextPageToken = r.NextPageToken
 		}
 	}
+
+	// output no permission files
+	if len(noPermissionFiles) > 0 {
+		fmt.Println("\n\nSome files were unable to be processed...")
+		for f := range noPermissionFiles {
+			_, _ = fmt.Println(fmt.Sprintf("Unable to process file; no permissions returned: %s", noPermissionFiles[f].Name))
+		}
+	}
+
 	// extract values
 	return allFiles, nil
 }
