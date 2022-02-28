@@ -62,7 +62,7 @@ func NewClient(ctx context.Context, domain string, administratorEmail string, se
 }
 
 func (d *Client) getDriveClientForUser(ctx context.Context, userEmail string) (*drive.Service, error) {
-	ts, err := tokenSourceForSubject(ctx, d.serviceAccountFilePath, &userEmail, drive.DriveScope)
+	ts, err := tokenSourceForSubject(ctx, d.serviceAccountFilePath, &userEmail, drive.DriveReadonlyScope)
 	if err != nil {
 		return nil, err
 	}

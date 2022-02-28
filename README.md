@@ -45,7 +45,7 @@ This tool requires some setup to be able to work:
   * Navigate to http://admin.google.com
   * Navigate to Security → API Controls → Manage Domain-wide Delegation within the Google admin portal.
   * Set the client name to the Client ID you copied on the previous step.
-  * Set the API scopes `https://www.googleapis.com/auth/drive` and `https://www.googleapis.com/auth/admin.directory.user` and select Authorize.
+  * Set the API scopes `https://www.googleapis.com/auth/drive.readonly` and `https://www.googleapis.com/auth/admin.directory.user.readonly` and select Authorize.
 
 Credit to https://helpcenter.netwrix.com/NDC/NDC/Config_Infrastructure/Configure_GDrive.html
 
