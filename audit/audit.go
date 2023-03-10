@@ -8,51 +8,50 @@ import (
 	"google-drive-audit/googledrive"
 	"google-drive-audit/util"
 	"io"
+	"log"
 	"os"
 )
 
-func ExportFileListToCSV(ctx context.Context, w io.Writer, domain, administratorEmail string, fromCache, showProgress bool, serviceAccountFilePath string) error {
+func Audit(ctx context.Context, domain, administratorEmail string, databaseFilename string, showProgress bool, serviceAccountFilePath string) error {
 	var (
 		files map[string]googledrive.File
 		err   error
 	)
-	if !fromCache {
-		gd, err := googledrive.NewClient(ctx, domain, administratorEmail, serviceAccountFilePath)
-		if err != nil {
-			return fmt.Errorf("error creating service: %v", err)
-		}
-		// get files
-		var status chan int
-		if showProgress {
-			status = make(chan int)
-			go func() { // print status
-				for s := range status {
-					_, _ = fmt.Fprintf(os.Stderr, "\u001B[2K\rFiles processed: %d", s)
-				}
-				_, _ = fmt.Fprint(os.Stderr, "\n")
-			}()
-		}
-		files, err = gd.GetAllFilesWithPermissions(ctx, status)
-		if err != nil {
-			return err
-		}
-		err = saveToDisk(files)
-		if err != nil {
-			return err
-		}
-	} else {
-		files, err = loadFromDisk()
-		if err != nil {
-			return err
-		}
+	gd, err := googledrive.NewClient(ctx, domain, administratorEmail, serviceAccountFilePath)
+	if err != nil {
+		return fmt.Errorf("error creating service: %v", err)
 	}
+	// get files
+	var status chan int
+	if showProgress {
+		status = make(chan int)
+		go func() { // print status
+			for s := range status {
+				_, _ = fmt.Fprintf(os.Stderr, "\u001B[2K\rFiles processed: %d", s)
+			}
+			_, _ = fmt.Fprint(os.Stderr, "\n")
+		}()
+	}
+	files, err = gd.GetAllFilesWithPermissions(ctx, status)
+	if err != nil {
+		return err
+	}
+	return saveToDisk(databaseFilename, files)
+}
+
+func WriteFileReport(_ context.Context, databaseFilename string, w io.Writer) error {
+	f, err := loadFromDisk(databaseFilename)
+	if err != nil {
+		return err
+	}
+	files := *f
 
 	// resolve full path
 	type FileWithPath struct {
 		googledrive.File
 		FullPath string
 	}
-	allFiles := make([]FileWithPath, 0)
+	allFiles := make(map[string]FileWithPath, 0)
 	filemap := make(map[string]googledrive.File)
 	for _, file := range files {
 		filemap[file.ID] = file
@@ -71,21 +70,21 @@ func ExportFileListToCSV(ctx context.Context, w io.Writer, domain, administrator
 				break
 			}
 		}
-		allFiles = append(allFiles, FileWithPath{File: file, FullPath: fullPath})
+		allFiles[file.ID] = FileWithPath{File: file, FullPath: fullPath}
 	}
 
 	// print
 	csvWriter := csv.NewWriter(w)
 	csvWriter.UseCRLF = true
 	defer csvWriter.Flush()
-	err = csvWriter.Write([]string{"File name", "Person", "Role", "Type", "URL"})
+	err = csvWriter.Write([]string{"File name", "Role", "Permission Type", "Person", "Permission ID", "Inherited Permission", "Type", "URL"})
 	if err != nil {
 		return err
 	}
 
 	for _, file := range allFiles {
-		for email, role := range file.Permissions {
-			err = csvWriter.Write([]string{file.FullPath, email, role, file.MimeType, file.OpenURL})
+		for email, perm := range file.Permissions {
+			err = csvWriter.Write([]string{file.FullPath, perm.Role, perm.Type, email, perm.ID, boolToString(perm.Inherited), file.MimeType, file.OpenURL})
 			if err != nil {
 				return err
 			}
@@ -94,8 +93,60 @@ func ExportFileListToCSV(ctx context.Context, w io.Writer, domain, administrator
 	return nil
 }
 
-func saveToDisk(files map[string]googledrive.File) error {
-	f, err := os.Create("files.json")
+func UnshareFiles(ctx context.Context, domain, administratorEmail string, serviceAccountFilePath string, databaseFilename string, emailToDelete string, dryRun bool) error {
+	f, err := loadFromDisk(databaseFilename)
+	if err != nil {
+		return err
+	}
+	files := *f
+
+	gd, err := googledrive.NewClient(ctx, domain, administratorEmail, serviceAccountFilePath)
+	if err != nil {
+		return fmt.Errorf("error creating service: %v", err)
+	}
+
+	// collect owner, fileID and permissionIDs
+	type PermissionToDelete struct {
+		OwnerEmail   string
+		FileID       string
+		PermissionID string
+	}
+	for _, file := range files {
+		var ownerEmail string
+		var permissionIDToDelete string
+		for email, perm := range file.Permissions {
+			switch perm.Role {
+			case "owner", "organizer":
+				ownerEmail = email
+			}
+			if !perm.Inherited && email == emailToDelete {
+				permissionIDToDelete = perm.ID
+			}
+		}
+		if ownerEmail != "" && permissionIDToDelete != "" { // delete
+			log.Printf("Delete permission: (id=%s permission-id=%s), owner=%s\n", file.ID, permissionIDToDelete, ownerEmail)
+			if dryRun {
+				log.Println("(dry run, not doing)")
+			} else {
+				err = gd.RemovePermissions(ctx, ownerEmail, file.ID, permissionIDToDelete)
+				if err != nil {
+					return fmt.Errorf("error deleting permission: %v", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func boolToString(b bool) string {
+	if b {
+		return "YES"
+	}
+	return "NO"
+}
+
+func saveToDisk(filename string, files googledrive.FilesByID) error {
+	f, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
@@ -105,14 +156,14 @@ func saveToDisk(files map[string]googledrive.File) error {
 	return err
 }
 
-func loadFromDisk() (map[string]googledrive.File, error) {
-	f, err := os.Open("files.json")
+func loadFromDisk(filename string) (*googledrive.FilesByID, error) {
+	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer util.PrintIfError(f.Close)
 
-	var files map[string]googledrive.File
-	err = json.NewDecoder(f).Decode(&files)
-	return files, err
+	var filesAndPermissions googledrive.FilesByID
+	err = json.NewDecoder(f).Decode(&filesAndPermissions)
+	return &filesAndPermissions, err
 }

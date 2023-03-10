@@ -19,4 +19,6 @@ func Execute() error {
 
 func init() {
 	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(reportCmd)
+	rootCmd.AddCommand(unshareCmd)
 }

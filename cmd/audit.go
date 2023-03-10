@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"google-drive-audit/audit"
-	"google-drive-audit/util"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -12,28 +10,18 @@ import (
 var (
 	domain          string
 	adminEmail      string
-	output          string
+	database        string
 	quiet           bool
 	credentialsFile string
 
 	auditCmd = &cobra.Command{
 		Use:     "audit",
-		Short:   "List all files with permissions",
-		Long:    `audit lists all files for all users in all the company's drives, together with who has access to them.`,
+		Short:   "Fetch all files with permissions",
+		Long:    `audit fetches a list of all files for all users in all the company's drives, together with who has access to them.`,
 		Example: "google-drive-audit audit --domain=yourcompany.com --admin-email=you@yourcompany.com",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
-			out := os.Stdout
-			if output != "-" {
-				var err error
-				out, err = os.Create(output)
-				if err != nil {
-					return err
-				}
-				defer util.PrintIfError(out.Close)
-			}
-
-			return audit.ExportFileListToCSV(ctx, out, domain, adminEmail, false, !quiet, credentialsFile)
+			return audit.Audit(ctx, domain, adminEmail, database, !quiet, credentialsFile)
 		},
 	}
 )
@@ -47,7 +35,7 @@ func init() {
 	if err := auditCmd.MarkPersistentFlagRequired("admin-email"); err != nil {
 		panic(err)
 	}
-	auditCmd.PersistentFlags().StringVarP(&output, "output", "o", "-", "output file")
+	auditCmd.PersistentFlags().StringVarP(&database, "database", "b", "db.json", "database file")
 	auditCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "do not show progress")
 	auditCmd.PersistentFlags().StringVarP(&credentialsFile, "credentials", "c", "credentials.json", "service credentials file (obtained from Google Cloud Platform console)")
 }
