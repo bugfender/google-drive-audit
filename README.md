@@ -74,6 +74,8 @@ Flags:
 Example:
 
     google-drive-audit audit --domain=yourcompany.com --admin-email=you@yourcompany.com
+    google-drive-audit report
+    google-drive-audit unshare --domain yourcompany.com --admin-email you@yourcompany.com --user ex.employee@yourcompany.com
 
 ## Limitations
 
@@ -81,14 +83,14 @@ This tool only works on Google Workspaces domains.
 
 ## Roadmap
 
-This tool could do other useful things for an auditor:
+This tool could do other useful things for an administrator:
 
 * Copy files shared by external users (to keep in case they were un-shared)
-* Remove all permissions for a given user (for example, a supplier who no longer works for us)
 
 These features will be implemented when needed, if ever. Please feel free to contribute.
 
 
 ## Support
 
-You can get support from Beenario GmbH for a fee. Contact us if you're interested.
+This tool is open source and free to use (see `LICENSE`), but you can get commercial 
+support from Beenario GmbH for a fee. Contact us if you're interested.
